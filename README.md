@@ -75,6 +75,10 @@ dsh plugin --profile desktop add file:<插件目录>\dsh-shell-switch-0.1.1.tgz
 2. （可选）**Git Bash 可执行文件**：留空即自动探测；探测失败时在这里填 `bash.exe` 绝对路径；
 3. （可选）**隐藏未启用的 shell 工具**：默认开；关掉则两个工具都留在列表里，未启用的那个仍会拒绝调用。
 
+面板下方那行是**宿主实时状态**（面板从 `GET /shell-switch/status` 读取，经 dsh 的连接鉴权），
+例如 `已找到 Git Bash：D:\Application\DevTool\Git\bin\bash.exe（来自 git --exec-path）· 模型当前拿到的 shell 工具：pwsh`。
+它直接回答"到底认没认出来"：路径、来源、以及此刻模型手上的 shell 工具；读不到时明确写"读不到宿主状态"，不猜。
+
 > 插件页里那行 **`cordis:group`（id 是 `shell-switch-bash`）是容器行**，它自身没有插件实现，
 > 所以点它的启用开关会报"找不到该插件"——这是正常的，不影响功能；
 > 真正在运行的是它下面两行：`@deepseek-ai/dsh-bash-sandbox`（执行器）和 `@deepseek-ai/dsh-tool-bash`（`bash` 工具）。
@@ -112,7 +116,7 @@ dsh plugin --profile desktop add file:<插件目录>\dsh-shell-switch-0.1.1.tgz
 > 为什么必须隔离：一个 Cordis 上下文只允许**一个** `shell` 服务实现。Windows 上部署自带的执行器是
 > `pwsh-sandbox`，它必须继续服务其他消费者，所以 Git Bash 执行器只能活在自己的 realm 里。
 
-宿主半（`src/index.ts`）在开关之上做四件事：
+宿主半（`src/index.ts`）在开关之上做五件事：
 
 1. **探测 Git Bash**：`gitBashPath` → `git --exec-path` → `where git` 推导安装根 → PATH 中的 Git 目录 → 常见安装位置；
    顺手排除 `C:\Windows\System32\bash.exe`（那是 WSL 存根，不是 Git Bash）。
@@ -120,9 +124,18 @@ dsh plugin --profile desktop add file:<插件目录>\dsh-shell-switch-0.1.1.tgz
 3. **控制模型可见的工具**：监听 `system-prompt/assemble` 瀑布，把当前不该出现的那一个 shell 工具从 `assembly.tools` 里剔除。
 4. **兜底拒绝 + 说明当前 shell**：`tools.guard` 拒绝调用未启用的 shell（覆盖“工具列表还是上一步缓存”的窗口），
    并用一个动态提示词段告诉模型当前 shell、方言和 Git Bash 的真实路径。
+5. **把实时事实交给面板**：`GET /shell-switch/status` 返回当前 shell、探测到的 `bash.exe` 与来源、可见/隐藏的工具。
+   路由只在有 web server 的部署里注册，且只回答通过 `connection.requestRejection` 的调用方（未鉴权 401）。
 
-客户端半（`src/client/`）注册「设置 → Shell」页：分段控件 + 路径输入框 + 隐藏开关，
-读写走 dsh 官方的 `configForms` / settings Remote，不新增任何自定义 Remote。
+客户端半（`src/client/`）把同一个面板注册到两处：`settings.section`（设置 → Shell）与
+`plugins.row.config`（本 bundle 的 `shell-switch` 行配置页，key `dsh-shell-switch#shell-switch`）。
+读写走 dsh 官方的 `configForms` / settings Remote，不新增任何自定义 Remote；状态行走上面那条宿主路由。
+
+> **为什么配置字段必须 `volatile`**：dsh 的设置服务只服务含 volatile 字段的 Config
+> （`settings.describe()` 里 `volatileForm(schema)` 会丢弃其余字段，一个不剩就整行跳过）。
+> 字段不是 volatile 时，这一行**没有设置命名空间**：面板绑不上、控件被锁、写入也会被拒。
+> 同时 volatile 意味着配置改动**就地更新**，不必重挂载插件行。`src/config.ts` 里三个字段都标了 volatile，
+> 且宿主半在读哨兵、提示词、工具过滤、状态接口时都重新读取当前值。
 
 ---
 
@@ -150,7 +163,10 @@ dsh plugin --profile desktop add file:<插件目录>\dsh-shell-switch-0.1.1.tgz
   `workspace-write` / `read-only` 下会走 dsh 自带的沙箱 runner 包裹 `bash`。若某个部署在这种模式下
   报 runner 失败，把 `cordis.patch.yml` 里 `shell-switch-bash-exec` 的 `name` 换成
   `@deepseek-ai/dsh-bash-local` 即可（放弃 bash 侧的沙箱约束，其余行为不变）。
-- **面板需要刷新页面后才能看到**：客户端半是新装的动态浏览器 bundle，页面刷新（F5）后才会进入模块图。
+- **客户端半热更新，宿主半要重启**：面板（浏览器半）由 dsh 的客户端 HMR 自动热更新，装完即生效；
+  但**宿主半的 schema 改动必须重启 dsh 进程**（例如新增配置字段、把字段改成 volatile、新增 HTTP 路由）。
+  判断办法：`Config.listConfigs({ entry: 'include:shell-switch' })` 的投影里出现 `x-cordis.volatile: true`
+  才算新模块已加载。
 
 ---
 

@@ -78,6 +78,12 @@ The panel asks for:
 3. optional: **Hide the inactive shell tool** (default on); off keeps both tools listed, and the
    inactive one still refuses calls.
 
+The line under the controls is the **host's live status** (read from `GET /shell-switch/status` through
+dsh's connection trust): for example
+`Git Bash found: D:\Application\DevTool\Git\bin\bash.exe (from git --exec-path) · shell tool the model gets: pwsh`.
+It answers "did it actually find it?" with the path, how it was found, and the shell tool the model is
+holding right now; when the route cannot be read it says so instead of guessing.
+
 > The **`cordis:group` row** (id `shell-switch-bash`) is a container with no plugin implementation of
 > its own, so toggling it reports "plugin not found" — that is expected and harmless. What actually
 > runs are its two children: `@deepseek-ai/dsh-bash-sandbox` (the executor) and
@@ -114,7 +120,7 @@ To confirm it took effect, have the model run a command: the `pwsh` position run
 > Isolation is required: a Cordis context loads exactly one `shell` implementation, and the
 > deployment's own executor (`pwsh-sandbox` on Windows) must keep serving every other consumer.
 
-The host half (`src/index.ts`) does four things on top of the switch:
+The host half (`src/index.ts`) does five things on top of the switch:
 
 1. **Resolve Git Bash**: `gitBashPath` → `git --exec-path` → roots implied by `where git` → Git
    directories on PATH → well-known install locations, never mistaking the WSL stub in
@@ -126,10 +132,23 @@ The host half (`src/index.ts`) does four things on top of the switch:
 4. **Refuse the inactive shell and state the active one**: a `tools.guard` denial covers a tool list
    cached from the previous step, and a dynamic prompt section states the active shell, its dialect,
    and the resolved Git Bash path.
+5. **Hand the panel the live facts**: `GET /shell-switch/status` reports the active shell, the resolved
+   `bash.exe` and where it came from, and which shell tool is visible or withheld. The route exists
+   only where a web server does, and answers only callers `connection.requestRejection` accepts
+   (401 otherwise).
 
-The browser half (`src/client/`) registers the Settings → Shell page — segmented control, path input,
-hide switch — reading and writing through dsh's own `configForms` / settings Remote, with no custom
-Remote and no new host API.
+The browser half (`src/client/`) registers one panel in two places: `settings.section`
+(Settings → Shell) and `plugins.row.config` (this bundle's own `shell-switch` row page, keyed
+`dsh-shell-switch#shell-switch`). Reads and writes go through dsh's own `configForms` / settings
+Remote — no custom Remote — and the status line comes from the host route above.
+
+> **Why the config fields must be `volatile`**: dsh's settings service only serves a namespace for a
+> Config that has at least one volatile field (`settings.describe()` drops the rest through
+> `volatileForm`, and skips the row entirely when nothing is left). Without one, the row has **no
+> settings namespace**: the panel cannot bind, its controls stay locked, and writes are refused.
+> Volatile also means a config change applies in place instead of remounting the row. All three fields
+> in `src/config.ts` are volatile, and the host half re-reads the current values in its guard, its
+> prompt section, its tool filter, and its status route.
 
 ---
 
@@ -159,7 +178,11 @@ Remote and no new host API.
   `workspace-write` / `read-only`, dsh's own sandbox runner wraps `bash`. If a deployment reports a
   runner failure there, set `shell-switch-bash-exec`'s `name` to `@deepseek-ai/dsh-bash-local` in
   `cordis.patch.yml` (drops sandboxing for the bash side; everything else is unchanged).
-- **The panel appears after a page refresh**: the browser half is a newly installed dynamic bundle.
+- **The browser half hot-reloads; the host half needs a restart**: dsh's client HMR re-materializes the
+  panel as soon as it is installed, but a host schema change (a new config field, a field becoming
+  volatile, a new HTTP route) only applies to a **new dsh process**. To tell the two apart,
+  `Config.listConfigs({ entry: 'include:shell-switch' })` shows `x-cordis.volatile: true` once the new
+  module is the one running.
 
 ---
 
