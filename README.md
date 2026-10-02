@@ -46,12 +46,21 @@ env-style=/c/Users/lss
 # 在插件目录构建出 lib/ 后打包
 cd <插件目录>; npm install; npm run build; npm pack
 # 安装进指定 profile
-dsh plugin --profile desktop add file:<插件目录>\dsh-shell-switch-0.1.1.tgz
+dsh plugin --profile desktop add file:<插件目录>\dsh-shell-switch-0.1.7.tgz
 ```
 
 在本会话中也可以直接用内置的 `plugin_manager` 工具：`install_bundle` + `file:...tgz`。
 
-**方式 B：手动挂载**
+**方式 B：从 git 仓库安装**
+
+```powershell
+dsh plugin --profile desktop add github:codel6i/dsh-shell-switch
+```
+
+仓库里的 `package.json` 带 `prepare: npm run build`，所以从 git 安装时会自动构建出 `lib/`
+（`lib/` 本身不入库）。
+
+**方式 C：手动挂载**
 
 1. 把插件目录（含 `lib/`）复制到 `<DSH_HOME>\profiles\<profile>\node_modules\dsh-shell-switch\`；
 2. 在 profile 的 `package.json` 里把 `"dsh-shell-switch"` 加进 `dsh.profile.bundles`；

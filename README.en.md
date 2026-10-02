@@ -47,13 +47,22 @@ The plugin is packaged as a dsh bundle (`package.json` → `dsh.bundle.patch` �
 
 ```powershell
 cd <plugin dir>; npm install; npm run build; npm pack
-dsh plugin --profile desktop add file:<plugin dir>\dsh-shell-switch-0.1.1.tgz
+dsh plugin --profile desktop add file:<plugin dir>\dsh-shell-switch-0.1.7.tgz
 ```
 
 Inside a dsh session the built-in `plugin_manager` tool does the same: `install_bundle` with a
 `file:...tgz` target.
 
-**Option B — manual mount**
+**Option B — install from the git repository**
+
+```powershell
+dsh plugin --profile desktop add github:codel6i/dsh-shell-switch
+```
+
+The repository's `package.json` carries `prepare: npm run build`, so a git install builds `lib/`
+itself (`lib/` is not committed).
+
+**Option C — manual mount**
 
 1. Copy the plugin directory (with `lib/`) to `<DSH_HOME>\profiles\<profile>\node_modules\dsh-shell-switch\`;
 2. add `"dsh-shell-switch"` to `dsh.profile.bundles` in the profile's `package.json`;
