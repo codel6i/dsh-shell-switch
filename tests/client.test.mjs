@@ -20,7 +20,7 @@ import * as jsxRuntime from 'react/jsx-runtime'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 /** The status route's canned answer, as the page's own fetch would receive it. */
-let hostStatus = {
+const DEFAULT_HOST_STATUS = {
   platform: 'win32',
   activeShell: 'pwsh',
   hideInactiveTool: true,
@@ -33,6 +33,7 @@ let hostStatus = {
   visibleTool: 'pwsh',
   hiddenTool: 'bash',
 }
+let hostStatus = DEFAULT_HOST_STATUS
 let hostStatusFails = false
 const statusRequests = []
 
@@ -320,7 +321,10 @@ test('disposal unregisters the page and stops following the form', () => {
  * page's dictionary, `useShellSwitch` from the injected hooks compartment, and
  * the face's actions as callbacks.
  */
-async function renderPanel(settings, locale = 'zh', served = ['shell-switch']) {
+async function renderPanel(settings, locale = 'zh', served = ['shell-switch'], status = DEFAULT_HOST_STATUS) {
+  // Every render starts from a known host answer, so one test's status cannot
+  // leak into the next one's expectations.
+  hostStatus = status
   const form = fakeForm(settings)
   const harness = fakeClientContext(served, form)
   const { exports } = loadClientModule()
@@ -353,22 +357,64 @@ test('the panel states the Git Bash the host resolved, and the tool the model ge
   assert.ok(markup.includes(dictionary.detectedLabel), 'the found label renders')
   assert.ok(markup.includes('D:\\Application\\DevTool\\Git\\bin\\bash.exe'), 'the resolved executable renders')
   assert.ok(markup.includes(dictionary.sourceGitExecPath), 'the source renders')
-  assert.ok(markup.includes(`${dictionary.toolLabel}pwsh`), 'the tool the model gets renders')
+  assert.ok(markup.includes(dictionary.factTool), 'the tool row renders')
+  assert.ok(markup.includes(`bash${dictionary.toolHiddenSuffix}`), 'bash is the withheld tool while PowerShell is active')
 })
 
 test('the panel states why Git Bash is missing when the host resolved none', async () => {
-  hostStatus = {
+  const missing = {
     platform: 'win32',
     activeShell: 'pwsh',
     hideInactiveTool: true,
     gitBash: { available: false, reason: 'configured-missing', configured: 'D:\\nope\\bash.exe' },
     visibleTool: 'pwsh',
   }
-  const { markup, dictionary } = await renderPanel({ activeShell: 'pwsh', gitBashPath: 'D:\\nope\\bash.exe' })
+  const { markup, dictionary } = await renderPanel({ activeShell: 'pwsh', gitBashPath: 'D:\\nope\\bash.exe' }, 'zh', ['shell-switch'], missing)
   assert.ok(markup.includes(dictionary.notDetectedLabel), 'the missing label renders')
   assert.ok(markup.includes(dictionary.reasonConfiguredMissing), 'the reason renders')
   assert.ok(markup.includes('D:\\nope\\bash.exe'), 'the unusable configured path renders')
-  assert.ok(markup.includes(`${dictionary.toolLabel}pwsh`), 'the tool the model gets renders')
+
+  // Selecting the shell that cannot run must say so on its own card.
+  const selected = await renderPanel({ activeShell: 'gitbash', gitBashPath: 'D:\\nope\\bash.exe' }, 'zh', ['shell-switch'], missing)
+  assert.ok(selected.markup.includes(selected.dictionary.unresolved), 'the executor row says nothing was resolved')
+  assert.ok(selected.markup.includes(selected.dictionary.unavailableHint), 'and the card warns before switching')
+})
+
+test('the detail card is the selected shell’s, not one paragraph swapped', async () => {
+  const bash = await renderPanel({ activeShell: 'gitbash' })
+  const pwsh = await renderPanel({ activeShell: 'pwsh' })
+  assert.notEqual(bash.markup, pwsh.markup, 'the two selections render different content')
+
+  assert.ok(bash.markup.includes(bash.dictionary.cardGitBash), 'the Git Bash card titles itself')
+  assert.ok(bash.markup.includes(bash.dictionary.gitbashPaths), 'its own path style')
+  assert.ok(bash.markup.includes(bash.dictionary.gitbashVars), 'its own environment variables')
+  assert.ok(bash.markup.includes(bash.dictionary.sourceGitExecPath), 'how the executable was resolved')
+  assert.ok(!bash.markup.includes(bash.dictionary.pwshPaths), 'and none of the PowerShell rows')
+
+  assert.ok(pwsh.markup.includes(pwsh.dictionary.cardPwsh), 'the PowerShell card titles itself')
+  assert.ok(pwsh.markup.includes(pwsh.dictionary.pwshExecutor), 'its executor needs no detection')
+  assert.ok(pwsh.markup.includes(pwsh.dictionary.pwshPaths), 'its own path style')
+  assert.ok(pwsh.markup.includes(pwsh.dictionary.pwshVars), 'its own environment variables')
+  assert.ok(!pwsh.markup.includes(pwsh.dictionary.factSource), 'PowerShell has nothing to resolve')
+  assert.ok(!pwsh.markup.includes(pwsh.dictionary.gitbashPaths), 'and none of the Git Bash rows')
+})
+
+test('the panel says what happens to the tool that is not in force', async () => {
+  const hidden = await renderPanel({ activeShell: 'gitbash', hideInactiveTool: true })
+  assert.ok(hidden.markup.includes(`pwsh${hidden.dictionary.toolHiddenSuffix}`), 'the other tool is reported hidden')
+
+  const kept = await renderPanel({ activeShell: 'gitbash', hideInactiveTool: false })
+  assert.ok(kept.markup.includes(`pwsh${kept.dictionary.toolKeptSuffix}`), 'or reported as kept but refused')
+})
+
+test('a switch the host has not adopted yet is stated, not glossed over', async () => {
+  // The canned host status says PowerShell; the stored setting says Git Bash.
+  const { markup, dictionary } = await renderPanel({ activeShell: 'gitbash' })
+  assert.ok(markup.includes(dictionary.pendingNotice.replace('{from}', 'pwsh').replace('{to}', 'Git Bash')), 'the pending switch is named')
+
+  const settled = await renderPanel({ activeShell: 'pwsh' })
+  assert.ok(!settled.markup.includes('{from}'), 'no unsubstituted template survives')
+  assert.ok(!settled.markup.includes('宿主当前仍在用'), 'and nothing pending is claimed once the host agrees')
 })
 
 test('an unbound page states that the host entry is missing and locks its controls', async () => {
@@ -423,16 +469,11 @@ test('the panel follows the active shell and shows the configured path', async (
   assert.match(bash.markup, /data-value="gitbash"/u)
   assert.ok(bash.markup.startsWith('<div'), 'the page renders an element tree')
   assert.ok(bash.markup.includes('D:\\Git\\bin\\bash.exe'), 'the configured executable is shown')
-  // Both dialect notes ride the segments as hover titles; only the active one
-  // is the paragraph the page states.
-  const bashBody = bash.markup.replace(/ title="[^"]*"/gu, '')
-  assert.ok(bashBody.includes(bash.dictionary.gitbashDetail), 'the Git Bash dialect note is stated')
-  assert.ok(!bashBody.includes(bash.dictionary.pwshDetail), 'the PowerShell dialect note is not stated')
+  assert.ok(bash.markup.includes(bash.dictionary.gitbashPaths), 'the Git Bash card explains its own dialect')
 
   const pwsh = await renderPanel({ activeShell: 'pwsh', gitBashPath: '', hideInactiveTool: false })
-  const pwshBody = pwsh.markup.replace(/ title="[^"]*"/gu, '')
-  assert.ok(pwshBody.includes(pwsh.dictionary.pwshDetail), 'the PowerShell dialect note is stated')
-  assert.ok(!pwshBody.includes(pwsh.dictionary.gitbashDetail), 'the Git Bash dialect note is not stated')
+  assert.ok(pwsh.markup.includes(pwsh.dictionary.pwshPaths), 'the PowerShell card explains its own dialect')
+  assert.ok(!pwsh.markup.includes('D:\\Git\\bin\\bash.exe'), 'nothing pins an executable while auto-detecting')
   assert.match(pwsh.markup, /aria-checked="false"/u, 'the hide switch reflects the stored false')
 })
 
@@ -462,4 +503,5 @@ test('a read-only host renders the page without the failure copy', () => {
   assert.match(markup, /<input[^>]*disabled/u, 'the path field is locked')
   assert.ok(!markup.includes(dictionary.writeFailed))
 })
+
 

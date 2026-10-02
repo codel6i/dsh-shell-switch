@@ -1,6 +1,6 @@
 {
   "name": "dsh-shell-switch",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": true,
   "description": "Shell switch panel for the dsh Windows desktop: run the agent's commands through PowerShell or Git Bash, chosen from Settings → Shell.",
   "keywords": [

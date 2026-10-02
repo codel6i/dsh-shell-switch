@@ -87,6 +87,11 @@ The panel asks for:
 3. optional: **Hide the inactive shell tool** (default on); off keeps both tools listed, and the
    inactive one still refuses calls.
 
+The lower half of the panel **follows the selection**: pick a shell and the card becomes that shell's —
+its executor (with the resolved path and how it was found), path style, environment variables, the tool
+the model holds, and what happens to the other tool (withheld, or listed and refused). Below that come
+the Git Bash path setting and the hide switch, and the last line is the host's live view.
+
 The line under the controls is the **host's live status** (read from `GET /shell-switch/status` through
 dsh's connection trust): for example
 `Git Bash found: D:\Application\DevTool\Git\bin\bash.exe (from git --exec-path) · shell tool the model gets: pwsh`.

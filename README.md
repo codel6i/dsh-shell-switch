@@ -84,6 +84,10 @@ dsh plugin --profile desktop add github:codel6i/dsh-shell-switch
 2. （可选）**Git Bash 可执行文件**：留空即自动探测；探测失败时在这里填 `bash.exe` 绝对路径；
 3. （可选）**隐藏未启用的 shell 工具**：默认开；关掉则两个工具都留在列表里，未启用的那个仍会拒绝调用。
 
+面板下半部分**随选择变化**：选中哪一项，就换成那一项的说明卡片——执行器（含解析到的路径与来源）、
+路径风格、环境变量、模型当前拿到的工具，以及另一个工具的下场（已隐藏 / 仍列出但会被拒绝）；
+再下面是只影响 Git Bash 的路径设置与隐藏开关，最后一行是宿主实时状态。
+
 面板下方那行是**宿主实时状态**（面板从 `GET /shell-switch/status` 读取，经 dsh 的连接鉴权），
 例如 `已找到 Git Bash：D:\Application\DevTool\Git\bin\bash.exe（来自 git --exec-path）· 模型当前拿到的 shell 工具：pwsh`。
 它直接回答"到底认没认出来"：路径、来源、以及此刻模型手上的 shell 工具；读不到时明确写"读不到宿主状态"，不猜。
