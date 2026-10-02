@@ -1,0 +1,5 @@
+# Match the dsh repository's line-ending policy: the working copy is LF on
+# every platform, so a Windows clone does not rewrite every file.
+* text=auto eol=lf
+*.tgz binary
+*.png binary

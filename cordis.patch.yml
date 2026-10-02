@@ -1,0 +1,47 @@
+# dsh-shell-switch bundle patch.
+#
+# Two rows, one job: let the agent's command shell be PowerShell or Git Bash,
+# chosen from Settings → Shell.
+#
+# 1. `shell-switch` is this plugin: it detects Git Bash, puts it on PATH,
+#    states the active shell in the prompt, hides the inactive shell tool from
+#    the model, and refuses a call to it. Its `activeShell` config field IS the
+#    switch; the settings page writes it through the standard settings Remote.
+#
+# 2. `shell-switch-bash` mounts the official bash tool over an executor whose
+#    `shell` service lives in an ISOLATED realm. The realm matters: a context
+#    loads exactly one `shell` implementation, and the deployment's own
+#    executor (`pwsh-sandbox` on Windows) must keep serving every other
+#    consumer. `isolate.shell` scopes this executor to this group only.
+#
+# Config overrides are id-targeted, so a profile may restate any row below.
+- insert:
+    - id: shell-switch
+      name: dsh-shell-switch
+      config:
+        # 'pwsh' (default) or 'gitbash'.
+        activeShell: pwsh
+        # Empty = auto-detect Git Bash (git --exec-path, PATH, known install
+        # locations). Set an absolute bash.exe path to pin it.
+        gitBashPath: ''
+        # Hide the shell tool that is not active from the model's tool list.
+        hideInactiveTool: true
+
+    - id: shell-switch-bash
+      name: cordis:group
+      group: true
+      isolate:
+        shell: true
+      config:
+        - id: shell-switch-bash-exec
+          name: '@deepseek-ai/dsh-bash-sandbox'
+          config:
+            timeoutMs: 120000
+            maxTimeoutMs: 600000
+            maxOutputBytes: 64000
+            graceMs: 3000
+        - id: shell-switch-bash-tool
+          name: '@deepseek-ai/dsh-tool-bash'
+          config:
+            enableRunInBackground: true
+            promoteOnTimeout: true
