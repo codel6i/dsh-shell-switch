@@ -60,6 +60,19 @@ dsh plugin --profile desktop add github:codel6i/dsh-shell-switch
 仓库里的 `package.json` 带 `prepare: npm run build`，所以从 git 安装时会自动构建出 `lib/`
 （`lib/` 本身不入库）。
 
+> **pnpm 11 的前置条件**：git 依赖要跑 `prepare` 必须先进白名单，否则安装会以
+> `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` 失败（错误信息里会给出确切的键）。把 profile 的
+> `pnpm-workspace.yaml` 改成：
+>
+> ```yaml
+> allowBuilds:
+>   dsh-shell-switch@git+https://github.com/codel6i/dsh-shell-switch.git: true
+> ```
+>
+> 顺带说明：dsh 界面里的"批准构建"只认 pnpm 写下的占位值 `set this to true or false`，
+> 而 git 依赖的 `prepare` 是硬失败、不会产生占位，所以这条路要先手工写白名单；
+> 安装 `dshmarket` 之后也可以用它界面里的批准入口。
+
 **方式 C：手动挂载**
 
 1. 把插件目录（含 `lib/`）复制到 `<DSH_HOME>\profiles\<profile>\node_modules\dsh-shell-switch\`；

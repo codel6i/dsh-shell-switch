@@ -62,6 +62,19 @@ dsh plugin --profile desktop add github:codel6i/dsh-shell-switch
 The repository's `package.json` carries `prepare: npm run build`, so a git install builds `lib/`
 itself (`lib/` is not committed).
 
+> **pnpm 11 prerequisite**: a git dependency may only run `prepare` once it is allowlisted, otherwise
+> the install fails with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` (the message names the exact key).
+> Set the profile's `pnpm-workspace.yaml` to:
+>
+> ```yaml
+> allowBuilds:
+>   dsh-shell-switch@git+https://github.com/codel6i/dsh-shell-switch.git: true
+> ```
+>
+> For context: dsh's own build approval only recognises the placeholder pnpm writes (`set this to
+> true or false`), and a git dependency's `prepare` fails hard before any placeholder exists — hence
+> the manual entry. Installing `dshmarket` gives the same approval a UI.
+
 **Option C — manual mount**
 
 1. Copy the plugin directory (with `lib/`) to `<DSH_HOME>\profiles\<profile>\node_modules\dsh-shell-switch\`;
